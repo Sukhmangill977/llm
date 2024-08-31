@@ -1,0 +1,13 @@
+prefix=/Users/harkiratkaurgill/llm/venv
+exec_prefix=/Users/harkiratkaurgill/llm/venv
+libdir=/Users/harkiratkaurgill/llm/venv/lib
+sharedlibdir=/Users/harkiratkaurgill/llm/venv/lib
+includedir=/Users/harkiratkaurgill/llm/venv/include
+
+Name: zlib
+Description: zlib compression library
+Version: 1.2.13
+
+Requires:
+Libs: -L${libdir} -L${sharedlibdir} -lz
+Cflags: -I${includedir}
