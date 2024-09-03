@@ -1,4 +1,7 @@
-import streamlit as st
+from typing import List
+from fastapi import FastAPI, Form, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import os
@@ -9,18 +12,30 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
+from io import BytesIO
+import requests
+
+# Initialize FastAPI app
+app = FastAPI()
 
 # Load environment variables
 load_dotenv()
-os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-def get_pdf_text(pdf_docs):
+# CORS middleware configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+)
+
+def get_pdf_text(pdf_file):
     text = ""
-    for pdf in pdf_docs:
-        pdf_reader = PdfReader(pdf)
-        for page in pdf_reader.pages:
-            text += page.extract_text()
+    pdf_reader = PdfReader(pdf_file)
+    for page in pdf_reader.pages:
+        text += page.extract_text() or ""
     return text
 
 def get_text_chunks(text):
@@ -35,10 +50,10 @@ def get_vector_store(text_chunks):
 
 def get_conversational_chain():
     prompt_template = """
-    Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
-    provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
-    Context:\n {context}?\n
-    Question: \n{question}\n
+    Answer the question as detailed as possible from the provided context. Make sure to provide all the details. If the answer is not in
+    the provided context, just say "answer is not available in the context"; don't provide the wrong answer.\n\n
+    Context:\n{context}\n
+    Question:\n{question}\n
 
     Answer:
     """
@@ -49,41 +64,54 @@ def get_conversational_chain():
 
     return chain
 
-def user_input(user_question):
+def download_file(url, local_filename=None):
+    # If no filename is provided, use the name from the URL
+    if not local_filename:
+        local_filename = url.split('/')[-1].split('?')[0]
+    
+    try:
+        # Send HTTP GET request to the URL
+        with requests.get(url, stream=True) as response:
+            response.raise_for_status()  # Check if the request was successful
+            # Open a local file in binary write mode
+            with open(local_filename, 'wb') as file:
+                # Stream the content and write it to the file in chunks
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:  # Filter out keep-alive new chunks
+                        file.write(chunk)
+        print(f"File downloaded successfully: {local_filename}")
+    except Exception as e:
+        print(f"Error downloading file: {e}")
+
+    return local_filename
+
+@app.post("/ask")
+async def ask_question(pdf_urls: List[str] = Form(...), question: str = Form(...)):
+    # Process each PDF URL
+    print("pdfurls", pdf_urls)
+    print("Processing PDF files...")
+    raw_text = ""
+    for url in pdf_urls:
+        pdf_file = download_file(url)
+        raw_text += get_pdf_text(pdf_file)
+    
+    # Process the extracted text
+    text_chunks = get_text_chunks(raw_text)
+    get_vector_store(text_chunks)
+
+    # Load vector store and find the most relevant chunks
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-    
-    # Allow dangerous deserialization as you trust the file
     new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-    docs = new_db.similarity_search(user_question)
+    docs = new_db.similarity_search(question)
 
+    # Get the answer using the conversational chain
     chain = get_conversational_chain()
-    
-    response = chain(
-        {"input_documents": docs, "question": user_question},
-        return_only_outputs=True
-    )
+    response = chain({"input_documents": docs, "question": question}, return_only_outputs=True)
 
-    print(response)
-    st.write("Reply: ", response["output_text"])
+    # Return the answer as JSON
+    return JSONResponse(content={"answer": response["output_text"]})
 
-def main():
-    st.set_page_config("Chat PDF")
-    st.header("Chat with PDF using HEALTH MATRIX💁")
-
-    user_question = st.text_input("Ask a Question from the PDF Files")
-
-    if user_question:
-        user_input(user_question)
-
-    with st.sidebar:
-        st.title("Menu:")
-        pdf_docs = st.file_uploader("Upload your PDF Files and Click on the Submit & Process Button", accept_multiple_files=True)
-        if st.button("Submit & Process"):
-            with st.spinner("Processing..."):
-                raw_text = get_pdf_text(pdf_docs)
-                text_chunks = get_text_chunks(raw_text)
-                get_vector_store(text_chunks)
-                st.success("Done")
-
+# Run the FastAPI app
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
