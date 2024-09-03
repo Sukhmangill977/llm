@@ -88,7 +88,7 @@ def download_file(url, local_filename=None):
 @app.post("/ask")
 async def ask_question(pdf_urls: List[str] = Form(...), question: str = Form(...)):
     # Process each PDF URL
-    print("pdfurls", pdf_urls)
+    print("pdf_urls:", pdf_urls)
     print("Processing PDF files...")
     raw_text = ""
     for url in pdf_urls:
