@@ -87,14 +87,13 @@ def download_file(url, local_filename=None):
 
 @app.post("/ask")
 async def ask_question(pdf_urls: str = Form(...), question: str = Form(...)):
-    # Process each PDF URL
     pdf_urls_list = pdf_urls.split(',')
     print("pdf_urls:", pdf_urls)
     print("Processing PDF files...")
     answers = []
     
     for i, url in enumerate(pdf_urls_list):
-        pdf_name = f"pdf{i+1}"  # Assign temporary names like pdf1, pdf2, etc.
+        pdf_name = f"From pdf{i+1}"  # Indicate the source PDF
         pdf_file = download_file(url)
         raw_text = get_pdf_text(pdf_file)
         
@@ -111,10 +110,20 @@ async def ask_question(pdf_urls: str = Form(...), question: str = Form(...)):
         chain = get_conversational_chain()
         for doc in docs:
             response = chain({"input_documents": [doc], "question": question}, return_only_outputs=True)
-            answers.append(f"From {pdf_name}: {response['output_text']}")
+            output_text = response['output_text'].strip()
+
+            # Check if the output is meaningful and not just "Answer is not available in the context"
+            if "Answer is not available in the context" not in output_text:
+                answers.append(f"{pdf_name}: {output_text}")
 
     # Combine all answers into one response
     final_answer = "\n\n".join(answers)
+
+    if not final_answer:
+        final_answer = "Answer is not available in the provided documents."
+
+    # Return the answer as JSON
+    return JSONResponse(content={"answer": final_answer})
 
     # Return the answer as JSON
     return JSONResponse(content={"answer": final_answer})
