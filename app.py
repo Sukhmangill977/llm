@@ -86,30 +86,38 @@ def download_file(url, local_filename=None):
     return local_filename
 
 @app.post("/ask")
-async def ask_question(pdf_urls: List[str] = Form(...), question: str = Form(...)):
+async def ask_question(pdf_urls: str = Form(...), question: str = Form(...)):
     # Process each PDF URL
+    pdf_urls_list = pdf_urls.split(',')
     print("pdf_urls:", pdf_urls)
     print("Processing PDF files...")
-    raw_text = ""
-    for url in pdf_urls:
-        pdf_file = download_file(url)
-        raw_text += get_pdf_text(pdf_file)
+    answers = []
     
-    # Process the extracted text
-    text_chunks = get_text_chunks(raw_text)
-    get_vector_store(text_chunks)
+    for i, url in enumerate(pdf_urls_list):
+        pdf_name = f"pdf{i+1}"  # Assign temporary names like pdf1, pdf2, etc.
+        pdf_file = download_file(url)
+        raw_text = get_pdf_text(pdf_file)
+        
+        # Process the extracted text
+        text_chunks = get_text_chunks(raw_text)
+        get_vector_store(text_chunks)
 
-    # Load vector store and find the most relevant chunks
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-    docs = new_db.similarity_search(question)
+        # Load vector store and find the most relevant chunks
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+        docs = new_db.similarity_search(question, k=10)  # Increase 'k' to get more relevant chunks
 
-    # Get the answer using the conversational chain
-    chain = get_conversational_chain()
-    response = chain({"input_documents": docs, "question": question}, return_only_outputs=True)
+        # Get the answer using the conversational chain
+        chain = get_conversational_chain()
+        for doc in docs:
+            response = chain({"input_documents": [doc], "question": question}, return_only_outputs=True)
+            answers.append(f"From {pdf_name}: {response['output_text']}")
+
+    # Combine all answers into one response
+    final_answer = "\n\n".join(answers)
 
     # Return the answer as JSON
-    return JSONResponse(content={"answer": response["output_text"]})
+    return JSONResponse(content={"answer": final_answer})
 
 # Run the FastAPI app
 if __name__ == "__main__":
