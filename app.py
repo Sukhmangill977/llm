@@ -130,6 +130,10 @@ async def ask_question(pdf_urls: str = Form(...), question: str = Form(...)):
     # Return the answer as JSON
     return JSONResponse(content={"answer": final_answer})
 
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the PDF Question Answering API"}
+
 # Run the FastAPI app
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))  # Get port from environment, default to 8000
