@@ -132,5 +132,4 @@ async def ask_question(pdf_urls: str = Form(...), question: str = Form(...)):
 
 # Run the FastAPI app
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))  # Get the port from the environment or use 8000 as default
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app)
