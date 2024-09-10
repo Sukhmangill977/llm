@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import os
+import uvicorn
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import google.generativeai as genai
 from langchain_community.vectorstores import FAISS
@@ -96,6 +97,7 @@ async def ask_question(pdf_urls: str = Form(...), question: str = Form(...)):
         pdf_name = f"From pdf{i+1}"  # Indicate the source PDF
         pdf_file = download_file(url)
         raw_text = get_pdf_text(pdf_file)
+        os.remove(pdf_file)
         
         # Process the extracted text
         text_chunks = get_text_chunks(raw_text)
@@ -128,7 +130,13 @@ async def ask_question(pdf_urls: str = Form(...), question: str = Form(...)):
     # Return the answer as JSON
     return JSONResponse(content={"answer": final_answer})
 
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the PDF Question Answering API"}
+
 # Run the FastAPI app
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", 8000))
+    print(f"Running on port: {port}")  # Log the port number
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
